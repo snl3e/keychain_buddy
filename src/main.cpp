@@ -13,8 +13,7 @@
 
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE, 6, 5);
 
-unsigned int startTime;
-unsigned int elapsedTime;
+uint32_t startTime;
 
 
 constexpr uint8_t BUTTON1_PIN = 2;
@@ -37,6 +36,7 @@ HeliCaveGame heliCaveGame(GAME_WIDTH, GAME_HEIGHT, GAME_LEFT);
 
 Game* games[] = {&breakoutGame, &microRacerGame, &defenderMiniGame, &jumpGame, &heliCaveGame};
 constexpr uint8_t GAME_COUNT = sizeof(games) / sizeof(games[0]);
+constexpr uint32_t IDLE_TIMEOUT_MS = 10000;
 
 SingleButton button1;
 SingleButton button2;
@@ -44,9 +44,8 @@ uint8_t menuIndex = 0;
 
 Game* activeGame = nullptr;
 
-void resetTimeCounter(){
+void resetTimeCounter() {
   startTime = millis();
-  elapsedTime = 0;
 }
 
 void drawMenu() {
@@ -71,6 +70,57 @@ void drawGameOverlay(Game& game) {
   }
 }
 
+bool shouldEnterIdle(uint32_t nowMs) {
+  return nowMs - startTime > IDLE_TIMEOUT_MS &&
+         buddy.GetCurrentState() == BuddyStateMachine::ST_MENU;
+}
+
+void enterIdle() {
+  u8g2.clearDisplay();
+  u8g2.clearBuffer();
+  u8g2.sendBuffer();
+  buddy.enterIdle();
+}
+
+void updateIdleState(bool button1Down, bool button2Down) {
+  if (button1Down && button2Down) {
+    resetTimeCounter();
+    buddy.enterMenu();
+    delay(500);
+  }
+}
+
+void updateMenuState(uint32_t nowMs, bool button1Down, bool button2Down) {
+  const ButtonInput input1 = button1.update(button1Down, nowMs);
+  const ButtonInput input2 = button2.update(button2Down, nowMs);
+
+  if (input2.click) {
+    menuIndex = (menuIndex + 1) % GAME_COUNT;
+  }
+  if (input1.click) {
+    activeGame = games[menuIndex];
+    activeGame->begin(nowMs, button1Down, button2Down);
+    buddy.enterGame();
+  }
+  drawMenu();
+}
+
+void updateGameState(uint32_t nowMs, bool button1Down, bool button2Down) {
+  activeGame->tick(nowMs, button1Down, button2Down);
+  activeGame->render(u8g2);
+
+  if (activeGame->phase() != GamePhase::Running) {
+    drawGameOverlay(*activeGame);
+  }
+  if (activeGame->shouldExitToMenu()) {
+    activeGame->clearExitRequest();
+    button1.reset(button1Down, nowMs);
+    button2.reset(button2Down, nowMs);
+    buddy.enterMenu();
+    resetTimeCounter();
+  }
+}
+
 void setup(void) {
   pinMode(BUTTON1_PIN, INPUT_PULLUP);
   pinMode(BUTTON2_PIN, INPUT_PULLUP);
@@ -85,70 +135,32 @@ void setup(void) {
   button2.reset(readActiveLowButton(BUTTON2_PIN), millis());
 
   startTime = millis();
-  elapsedTime = 0;
 }
 
 void loop(void) {
-
   const uint32_t nowMs = millis();
-  elapsedTime = nowMs - startTime;
   const bool button1Down = readActiveLowButton(BUTTON1_PIN);
   const bool button2Down = readActiveLowButton(BUTTON2_PIN);
 
-  if (elapsedTime > 10000 && buddy.GetCurrentState() == BuddyStateMachine::ST_MENU) {
-    u8g2.clearDisplay();
-    u8g2.clearBuffer();
-    u8g2.sendBuffer();
-
-    buddy.enterIdle();
+  if (shouldEnterIdle(nowMs)) {
+    enterIdle();
     return;
   }
-  
+
   u8g2.clearBuffer();
-  /*-------------IDLE STATE---------------*/
-  if (buddy.GetCurrentState() == BuddyStateMachine::ST_IDLE){
-    if (button1Down && button2Down) {
-      resetTimeCounter();
-      buddy.enterMenu();
-      delay(500);
-    }
+
+  const auto currentState = buddy.GetCurrentState();
+  switch(currentState){
+    case (BuddyStateMachine::ST_IDLE):
+      updateIdleState(button1Down, button2Down);
+      break;
+    case (BuddyStateMachine::ST_MENU):
+      updateMenuState(nowMs, button1Down, button2Down);
+      break;
+    case (BuddyStateMachine::ST_GAME):
+      updateGameState(nowMs, button1Down, button2Down);
+      break;
   }
-
-
-  /*-------------MENU STATE---------------*/
-  else if (buddy.GetCurrentState() == BuddyStateMachine::ST_MENU) 
-  {
-    const ButtonInput input1 = button1.update(button1Down, nowMs);
-    const ButtonInput input2 = button2.update(button2Down, nowMs);
-
-    if (input2.click) {
-      menuIndex = (menuIndex + 1) % GAME_COUNT;
-    }
-    if (input1.click) {
-      activeGame = games[menuIndex];
-      activeGame->begin(nowMs, button1Down, button2Down);
-      buddy.enterGame();
-    }
-    drawMenu();
-  } 
-
-
-  /*-------------GAME STATE---------------*/
-  else if (buddy.GetCurrentState() == BuddyStateMachine::ST_GAME)
-  {
-    activeGame->tick(nowMs, button1Down, button2Down);
-    activeGame->render(u8g2);
-    if (activeGame->phase() != GamePhase::Running) {
-      drawGameOverlay(*activeGame);
-    }
-    if (activeGame->shouldExitToMenu()) {
-      activeGame->clearExitRequest();
-      button1.reset(button1Down, nowMs);
-      button2.reset(button2Down, nowMs);
-      buddy.enterMenu();
-      resetTimeCounter();
-    }
-  }
-
+ 
   u8g2.sendBuffer();
 }
