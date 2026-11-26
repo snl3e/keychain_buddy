@@ -160,11 +160,11 @@ void loop(void) {
   const bool button2Down = readActiveLowButton(BUTTON2_PIN);
   const auto currentState = buddy.GetCurrentState();
 
-  static unsigned long lastRamPrint = 0;
+/*   static unsigned long lastRamPrint = 0;
   if (nowMs - lastRamPrint >= 1000) {
     lastRamPrint = nowMs;
     printRamUsage();
-  }
+  } */
 
 
   if (shouldEnterIdle(nowMs) && currentState != BuddyStateMachine::ST_IDLE) {

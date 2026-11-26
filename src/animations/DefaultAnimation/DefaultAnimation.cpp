@@ -834,7 +834,7 @@ const uint8_t* frames[] = {frame0, frame1, frame2, frame3, frame4, frame5, frame
 const AnimationData DEFAULT_ANIMATION = {
     frames,
     12,       // Frame count
-    200,     // Frame delay (ms)
+    100,     // Frame delay (ms)
     128,     // Width
     64       // Height
 };
