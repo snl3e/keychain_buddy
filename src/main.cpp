@@ -1,6 +1,8 @@
 #include <U8g2lib.h>
 #include <Wire.h>
+#include <esp_heap_caps.h>
 
+#include "../include/Animation.h"
 #include "../include/BuddyStateMachine.h"
 #include "../include/Button.h"
 #include "../include/Game.h"
@@ -9,12 +11,11 @@
 #include "game/HeliCaveGame/HeliCaveGame.h"
 #include "game/JumpGame/JumpGame.h"
 #include "game/MicroRacerGame/MicroRacerGame.h"
-
+#include "animations/DefaultAnimation/DefaultAnimation.h"
 
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE, 6, 5);
 
 uint32_t startTime;
-
 
 constexpr uint8_t BUTTON1_PIN = 2;
 constexpr uint8_t BUTTON2_PIN = 3;
@@ -27,6 +28,8 @@ constexpr uint8_t GAME_HEIGHT = SCREEN_HEIGHT;
 constexpr uint8_t GAME_LEFT = 0;
 
 BuddyStateMachine buddy;
+
+AnimationPlayer animationPlayer;
 
 BreakoutGame breakoutGame(GAME_WIDTH, GAME_HEIGHT, GAME_LEFT);
 MicroRacerGame microRacerGame(GAME_WIDTH, GAME_HEIGHT, GAME_LEFT);
@@ -127,32 +130,56 @@ void setup(void) {
 
   pinMode(TOUCH_PIN, INPUT);
 
+  Serial.begin(115200);
+
   u8g2.begin();
   u8g2.setContrast(255);
   u8g2.setBusClock(400000);
+
   randomSeed(micros());
+
   button1.reset(readActiveLowButton(BUTTON1_PIN), millis());
   button2.reset(readActiveLowButton(BUTTON2_PIN), millis());
 
   startTime = millis();
 }
 
+void printRamUsage() {
+  Serial.printf("Free heap: %lu bytes\n", (unsigned long)ESP.getFreeHeap());
+  Serial.printf("Min free heap (lowest ever): %lu bytes\n", (unsigned long)ESP.getMinFreeHeap());
+  Serial.printf("Largest free block: %lu bytes\n", (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+
+  if (psramFound()) {
+    Serial.printf("Free PSRAM: %lu bytes\n", (unsigned long)ESP.getFreePsram());
+  }
+}
+
 void loop(void) {
   const uint32_t nowMs = millis();
   const bool button1Down = readActiveLowButton(BUTTON1_PIN);
   const bool button2Down = readActiveLowButton(BUTTON2_PIN);
+  const auto currentState = buddy.GetCurrentState();
 
-  if (shouldEnterIdle(nowMs)) {
+  static unsigned long lastRamPrint = 0;
+  if (nowMs - lastRamPrint >= 1000) {
+    lastRamPrint = nowMs;
+    printRamUsage();
+  }
+
+
+  if (shouldEnterIdle(nowMs) && currentState != BuddyStateMachine::ST_IDLE) {
+    animationPlayer.play(DEFAULT_ANIMATION);
     enterIdle();
     return;
   }
 
   u8g2.clearBuffer();
 
-  const auto currentState = buddy.GetCurrentState();
+  
   switch(currentState){
     case (BuddyStateMachine::ST_IDLE):
       updateIdleState(button1Down, button2Down);
+      animationPlayer.update(u8g2);
       break;
     case (BuddyStateMachine::ST_MENU):
       updateMenuState(nowMs, button1Down, button2Down);

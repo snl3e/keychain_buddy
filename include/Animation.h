@@ -19,4 +19,5 @@ private:
 
     uint8_t currentFrame = 0;
     unsigned long previousTime = 0;
+    bool framePending = false;
 };
