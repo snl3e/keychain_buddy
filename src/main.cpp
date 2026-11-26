@@ -175,7 +175,7 @@ void loop(void) {
 
   u8g2.clearBuffer();
 
-  
+
   switch(currentState){
     case (BuddyStateMachine::ST_IDLE):
       updateIdleState(button1Down, button2Down);
@@ -189,5 +189,7 @@ void loop(void) {
       break;
   }
  
-  u8g2.sendBuffer();
+  if (currentState != BuddyStateMachine::ST_IDLE) {
+    u8g2.sendBuffer();
+  }
 }
